@@ -1,6 +1,7 @@
 import email.utils as eut
 import logging
 import re
+import subprocess
 import urllib
 from datetime import datetime
 
@@ -10,6 +11,11 @@ from bs4 import BeautifulSoup
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
 
+
+def chunks(a_list, n):
+  """Yield successive n-sized chunks from l."""
+  for i in range(0, len(a_list), n):
+    yield a_list[i:i + n]
 
 def get_vendors(session_handle):
   vendor_url = 'https://www.costcotravel.com/carSearch.act'
@@ -45,7 +51,6 @@ def get_vendors(session_handle):
 
   result = session_handle.post(vendor_url, data=data)
   assert result.status_code == 200
-  csrf_token = result.headers['csrf-token']
   html = BeautifulSoup(result.content)
   table = html.select('#carAgencyTitleDiv > table')
 
@@ -82,17 +87,8 @@ def get_quotes(vendors, session_handle, previous_result):
   """
 
   can = re.split(r',|;', previous_result.headers['Set-Cookie'])
-  # for x in ['Secure;', 'HttpOnly,', 'HttpOnly;', 'Path=/;']:
-  #   cookie = cookie.replace(x, '')
-  # filtered_things = []
-  # for x in can:
-  #   if not any(x.lower() in y.lower() for y in ['HttpOnly', 'Path', 'Secure']):
-  #     filtered_things.append(x)
 
   cookie = '; '.join(filter(lambda x: not any(y.lower() in x.lower() for y in ['HttpOnly', 'Path', 'Secure']), can))
-
-  t = datetime(*eut.parsedate(previous_result.headers['Date'])[:6])
-
   csrf_token = previous_result.headers['csrf-token']
 
   # logger.debug(cookie)
@@ -101,73 +97,67 @@ def get_quotes(vendors, session_handle, previous_result):
     'Cookie': cookie,
     'X-CSRF-Token': csrf_token,
   }
-  data = {
-    'cas': 3,
-    'carAgenciesForVendors': [
-      {
-        'vendorId': 'ET',
-        'agencyCodes': ["E123GP"]
-      },
-      {
-        'vendorId': 'AV',
-        'agencyCodes': ["SFOC01"]
-      }
-    ],
-    'carSearchInModifyFlow': False,
-    "pickupDate": "01/21/2017",
-    "pickupTime": "12:00 PM",
-    "dropoffDate": "01/22/2017",
-    "dropoffTime": "12:00 PM",
-    # "uid": "1484554729812_780.7547816966148",
-  }
 
-  # session_handle.headers.update(header)
-  # final_header = session_handle.headers
-  logger.debug(header)
-  logger.debug(data)
+  all_prices = []
+  for vendor_chunk in chunks(vendors,4):
+    locs = {}
+    for vendor, agency, address in vendor_chunk:
+      if vendor in locs:
+        locs[str(vendor)].append(str(agency))
+      else:
+        locs[str(vendor)] = [str(agency)]
 
+    carAgenciesForVendors = []
 
+    for vendor, agencies in locs.items():
+      carAgenciesForVendors.append({'vendorId': vendor, 'agencyCodes': agencies})
+      break
 
-  # http = urllib3.PoolManager()
-  # r = session_handle.request('GET', quote_url,
-  #                  headers=header,
-  #                  body='cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM')
-  # x = r.read()
-  #
-  # cmd = """\
-  # curl 'https://www.costcotravel.com/carAgencySelection.act' -H 'Cookie: JSESSIONID=166156FD6196F2045DC7EFF1E9191FA7; BIGipServerpool-prod-app=!87b8TUntT+0/R0PCd3dqWKLWYEL+b0MyFiFUi1xPdGyNYGJPo4KvZpSB4oVGTcHfXUiEa3ztI6hOog=='  -H 'X-CSRF-Token: 5c0b850401e8c9d6512412fc9cb05a949aedd26cc3c30d38c8b7e49e1df10065090be2255b90dd8a176d1244ffe68c4b99210820fead55cd1261f102caa19a6e' --data 'cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM'
-  # """
-  # output = subprocess.check_output(cmd, shell=True)
-
-  result = requests.post(
-    url=quote_url,
-    headers=header,
-    data='cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM'
-  )
-
-  cmds = ['curl', quote_url]
-  for k, v in header.items():
-    cmds.append("-H '{}: {}'".format(k, v))
-  cmds.append('--data')
+    data = {
+      'cas': 3,
+      'carAgenciesForVendors': carAgenciesForVendors,
+      'carSearchInModifyFlow': False,
+      "pickupDate": "01/21/2017",
+      "pickupTime": "12:00 PM",
+      "dropoffDate": "01/22/2017",
+      "dropoffTime": "12:00 PM",
+      # "uid": "1484554729812_780.7547816966148",
+    }
 
 
-  ed = []
-  for k, v in data.items():
-    ed.append("{}={}".format(k,v ))
-
-  cmds.append("'{}'".format('&'.join(ed)))
 
 
-  print(' '.join(cmds))
 
-  assert result.status_code == 200
-  assert 'Econ' in result.content
+    # session_handle.headers.update(header)
+    # final_header = session_handle.headers
+    logger.debug(header)
+    logger.debug(data)
+
+    cmds = ['curl', quote_url]
+    for k, v in header.items():
+      cmds.append("-H '{}: {}'".format(k, v))
+    cmds.append('--data')
 
 
+    ed = []
+    for k, v in data.items():
+      ed.append("{}={}".format(k,v ))
+
+    cmds.append("'{}'".format('&'.join(ed)))
+    final_cmd = ' '.join(cmds)
+    print(final_cmd)
+
+    output = subprocess.check_output(final_cmd, shell=True)
+    assert 'Econ' in output
+    quotes_html = BeautifulSoup(output)
+
+    for div in quotes_html.find_all('div', {'class': 'carCell'}):
+      all_prices.append(float(div.text.strip('$')))
+
+
+  return all_prices
 if __name__ == '__main__':
   with requests.Session() as session:
     vendors, result = get_vendors(session)
-    # with open('text.html', 'w') as f:
-    #   f.write(result.content)
-    # logger.info(vendors)
-    get_quotes(vendors, session, result)
+    quotes = get_quotes(vendors, session, result)
+    print sorted(quotes)
