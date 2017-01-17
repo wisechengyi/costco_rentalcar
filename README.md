@@ -1,6 +1,6 @@
 # Costco Renter Car Accelerator
-## Problem
-Costco limits searching for rental cars at 4 locations maximum at a single time, so it would be annoying to find the best price around.
+## Why
+Costco car rental provides great value, e.g. free cancellations and no hidden fees, but the user experience can suck in that searching for rental cars is limited at 4 locations maximum at a time, so it would be annoying to find the best price around.
 
 ## Solution
 ```
