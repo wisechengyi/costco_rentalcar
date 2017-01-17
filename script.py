@@ -1,4 +1,6 @@
+import argparse
 import logging
+import os
 import re
 import subprocess
 
@@ -15,7 +17,7 @@ def chunks(a_list, n):
     yield a_list[i:i + n]
 
 
-def get_vendors(session_handle, query):
+def open_connection(session_handle, query):
   vendor_url = 'https://www.costcotravel.com/carSearch.act'
   data = {
     'cs': 1,
@@ -27,21 +29,24 @@ def get_vendors(session_handle, query):
 
   result = session_handle.post(vendor_url, data=data)
   assert result.status_code == 200
-  html = BeautifulSoup(result.content)
+  return parse_vendors(result.content), result
+
+
+def parse_vendors(content):
+  html = BeautifulSoup(content)
   table = html.select('#carAgencyTitleDiv > table')
+  rows = table[0].contents
 
   vendors = []
-
-  for row in table[0].contents:
+  for row in rows:
     if row.find_all('td'):
       address = row.find_all('td')[0].text
       vendor, agency_code = row.find_all('input')[0]['id'].split('_')
       vendors.append((vendor, agency_code, address))
+  return vendors
 
-  return vendors, result
 
-
-def get_quotes(vendors, previous_result, query):
+def get_quotes(vendors, previous_result, query, page=None):
   """
   Minimal working curl command:
   curl https://www.costcotravel.com/carAgencySelection.act
@@ -50,7 +55,6 @@ def get_quotes(vendors, previous_result, query):
   --data 'carAgenciesForVendors=[{'vendorId': 'BG', 'agencyCodes': ['SFOC08']}, {'vendorId': 'AV', 'agencyCodes': ['SFOC02']}]&pickupDate=01/21/2017&cas=3&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM&carSearchInModifyFlow=False'
 
   :param vendors:
-  :param server_csrf_token:
   :return:
   """
 
@@ -58,8 +62,6 @@ def get_quotes(vendors, previous_result, query):
 
   cookie = '; '.join(filter(lambda x: not any(y.lower() in x.lower() for y in ['HttpOnly', 'Path', 'Secure']), can))
   csrf_token = previous_result.headers['csrf-token']
-
-  # logger.debug(cookie)
   quote_url = 'https://www.costcotravel.com/carAgencySelection.act'
   header = {
     'Cookie': cookie,
@@ -93,25 +95,56 @@ def get_quotes(vendors, previous_result, query):
       cmds.append("-H '{}: {}'".format(k, v))
     cmds.append('--data')
 
-    ed = []
-    for k, v in data.items():
-      ed.append("{}={}".format(k, v))
+    if not page:
+      serialized_data = []
+      for k, v in data.items():
+        serialized_data.append("{}={}".format(k, v))
 
-    cmds.append("'{}'".format('&'.join(ed)))
-    final_cmd = ' '.join(cmds)
-    logger.debug(final_cmd)
+      cmds.append("'{}'".format('&'.join(serialized_data)))
 
-    output = subprocess.check_output(final_cmd, shell=True)
-    assert 'Econ' in output
-    quotes_html = BeautifulSoup(output)
+      final_cmd = ' '.join(cmds)
+      logger.debug(final_cmd)
+      with open(os.devnull, 'w') as devnull:
+        output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
 
-    for div in quotes_html.find_all('div', {'class': 'carCell'}):
-      all_prices.append(float(div.text.strip('$')))
+      assert 'Econ' in output
+      quotes_html = BeautifulSoup(output)
+
+      for div in quotes_html.find_all('div', {'class': 'carCell'}):
+        all_prices.append(float(div.text.strip('$')))
+    else:
+      quote_query_data = {
+        'cas': 5,
+        'distanceSelected': False,
+        'selectedPage': page
+      }
+
+      serialized_data = []
+      for k, v in quote_query_data.items():
+        serialized_data.append("{}={}".format(k, v))
+
+      cmds.append("'{}'".format('&'.join(serialized_data)))
+
+      final_cmd = ' '.join(cmds)
+      logger.debug(final_cmd)
+      with open(os.devnull, 'w') as devnull:
+        output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
+
+      vendors = parse_vendors(output)
+      return vendors
 
   return all_prices
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser(description='Process some integers.')
+  parser.add_argument('--debug', dest='debug', action='store_true')
+  args = parser.parse_args()
+  if args.debug:
+    logger.setLevel(logging.DEBUG)
+  else:
+    logger.setLevel(logging.INFO)
+
   with requests.Session() as session:
     query = {
       'pickupCityLocationTypeSearch': 1,
@@ -132,14 +165,15 @@ if __name__ == '__main__':
       'driverAge': 25,
 
       "pickupDate": "01/21/2017",
-      "pickupTime": "12:00 PM",
+      "pickupTime": "09:00 AM",
       "dropoffDate": "01/22/2017",
-      "dropoffTime": "12:00 PM",
+      "dropoffTime": "09:00 AM",
 
       'carSearchInModifyFlow': False,
 
     }
-
-    vendors, result = get_vendors(session, query)
-    quotes = get_quotes(vendors, result, query)
-    print sorted(quotes)
+    vendors, result = open_connection(session, query)
+    for page in range(1, 5):
+      vendors = get_quotes(vendors, result, query, page)
+      quotes = get_quotes(vendors, result, query)
+      print "page {}: {}".format(page, sorted(quotes))
