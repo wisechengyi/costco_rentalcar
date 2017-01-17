@@ -1,4 +1,4 @@
-# Costco Renter Car Finder
+# Costco Renter Car Accelerator
 ## Problem
 Costco limits searching for rental cars at 4 locations maximum at a single time, so it would be annoying to find the best price around.
 
