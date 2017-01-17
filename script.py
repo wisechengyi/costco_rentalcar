@@ -15,37 +15,15 @@ def chunks(a_list, n):
     yield a_list[i:i + n]
 
 
-def get_vendors(session_handle):
+def get_vendors(session_handle, query):
   vendor_url = 'https://www.costcotravel.com/carSearch.act'
   data = {
     'cs': 1,
-    'pickupCityLocationTypeSearch': 1,
-    'pickupCountry': 'US',
-    'pickupCity': 'SAN FRANCISCO-CA',
-    'pickupAsAirport': False,
-    'pickupZip': '',
-    'pickupCityRadius': 25,
-
-    'dropoffCityLocationTypeSearch': 1,
-    'dropoffCountry': 'US',
-    'dropoffCity': 'SAN FRANCISCO-CA',
-    'dropoffAsAirport': False,
-    'dropoffZip': '',
-    'dropoffStreetAddress': '',
-    'dropoffCityRadius': 25,
-
-    'pickupDate': '01/21/2017',
-    'dropoffDate': '01/22/2017',
-    'pickupTime': '12:00 PM',
-    'dropoffTime': '12:00 PM',
-    'driverAge': 25,
-
     'fromHomePage': False,
     'fromCarVendorMainMenu': True,
-    'carSearchInModifyFlow': False,
-    # 'uid': '1484528899909_653.6177851957367',
-
   }
+
+  data.update(query)
 
   result = session_handle.post(vendor_url, data=data)
   assert result.status_code == 200
@@ -63,21 +41,13 @@ def get_vendors(session_handle):
   return vendors, result
 
 
-def get_quotes(vendors, session_handle, previous_result):
+def get_quotes(vendors, previous_result, query):
   """
-  curl 'https://www.costcotravel.com/carAgencySelection.act' -H 'Host: www.costcotravel.com'
-  -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.11; rv:50.0) Gecko/20100101 Firefox/50.0'
-  -H 'Accept: */*'
-  -H 'Accept-Language: en-US,en;q=0.5'
-  -H 'X-CSRF-Token: <client generated token>'
-  -H 'Content-Type: application/x-www-form-urlencoded;charset=UTF-8'
-  -H 'Referer: https://www.costcotravel.com/h=3001'
-  -H 'Cookie: JSESSIONID=619831155848BCA2EDE3BF49C47FCDDA;
-    BIGipServerpool-prod-app=!KCkILZ0AQdXppdjCd3dqWKLWYEL+bxnuFLCzWjhuULZ9niQsFy+j0hfyUUc5DeftahUftmr9u+GOJA==;
-    _ga=GA1.2.509779762.1484527852; Csrf-token=de9edd7187345e24e05b3603d629d0b3233060fd567eb2af27a4bd5a229d7d7ad9560505e230a1518008dcbabce4300b7326759d04c1636605853c42f8ddfb74;
-    SESSION_TIMESTAMP=1484539968110; _gat=1;
-    RENTAL_CAR_SEARCH_WIDGET_VALUES={"pickUpLocation":{"type":"city","code":"SAN FRANCISCO-CA","name":"SAN FRANCISCO, CA, US","cityCode":"SAN FRANCISCO","stateCode":"","countryCode":"US","latitude":"","longitude":""},"pickUpDate":"01/21/2017","pickUpTime":"12:00 PM","dropOffLocation":{"type":"city","code":"SAN FRANCISCO-CA","name":"SAN FRANCISCO, CA, US","cityCode":"SAN FRANCISCO","stateCode":"","countryCode":"US","latitude":"","longitude":""},"dropOffDate":"01/22/2017","dropOffTime":"12:00 PM","driverAge":25}'
-  --data 'cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E123GP"]},{"vendorId":"AL","agencyCodes":["SFOC78"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM&uid=1484540447270_850.4426179924067'
+  Minimal working curl command:
+  curl https://www.costcotravel.com/carAgencySelection.act
+  -H 'Cookie: JSESSIONID=6561E0532492F11DD5F2881F2BA4569A;  BIGipServerpool-prod-app=!r6rO13w4p8V3beLCd3dqWKLWYEL+b3e8+YyrGcQg9X6zCc78ikyUBYXow/+lnST9jM3jXrkQE12x7w=='
+  -H 'X-CSRF-Token: 194e2f0fd52c27e0f462b44eb18af1f6876af023355a718f4ab191efa48aebd213b3b8eefd4c0963f2dc75149feac10c87df6b564c12c485533e1f7c164155e9'
+  --data 'carAgenciesForVendors=[{'vendorId': 'BG', 'agencyCodes': ['SFOC08']}, {'vendorId': 'AV', 'agencyCodes': ['SFOC02']}]&pickupDate=01/21/2017&cas=3&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM&carSearchInModifyFlow=False'
 
   :param vendors:
   :param server_csrf_token:
@@ -113,12 +83,8 @@ def get_quotes(vendors, session_handle, previous_result):
     data = {
       'cas': 3,
       'carAgenciesForVendors': carAgenciesForVendors,
-      'carSearchInModifyFlow': False,
-      "pickupDate": "01/21/2017",
-      "pickupTime": "12:00 PM",
-      "dropoffDate": "01/22/2017",
-      "dropoffTime": "12:00 PM",
     }
+    data.update(query)
     logger.debug(header)
     logger.debug(data)
 
@@ -147,6 +113,33 @@ def get_quotes(vendors, session_handle, previous_result):
 
 if __name__ == '__main__':
   with requests.Session() as session:
-    vendors, result = get_vendors(session)
-    quotes = get_quotes(vendors, session, result)
+    query = {
+      'pickupCityLocationTypeSearch': 1,
+      'pickupCountry': 'US',
+      'pickupCity': 'SAN FRANCISCO-CA',
+      'pickupAsAirport': False,
+      'pickupZip': '',
+      'pickupCityRadius': 25,
+
+      'dropoffCityLocationTypeSearch': 1,
+      'dropoffCountry': 'US',
+      'dropoffCity': 'SAN FRANCISCO-CA',
+      'dropoffAsAirport': False,
+      'dropoffZip': '',
+      'dropoffStreetAddress': '',
+      'dropoffCityRadius': 25,
+
+      'driverAge': 25,
+
+      "pickupDate": "01/21/2017",
+      "pickupTime": "12:00 PM",
+      "dropoffDate": "01/22/2017",
+      "dropoffTime": "12:00 PM",
+
+      'carSearchInModifyFlow': False,
+
+    }
+
+    vendors, result = get_vendors(session, query)
+    quotes = get_quotes(vendors, result, query)
     print sorted(quotes)
