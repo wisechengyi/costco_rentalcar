@@ -1,13 +1,11 @@
 import email.utils as eut
 import logging
 import re
-import subprocess
 import urllib
 from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
-from requests.packages import urllib3
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
@@ -127,42 +125,43 @@ def get_quotes(vendors, session_handle, previous_result):
   # final_header = session_handle.headers
   logger.debug(header)
   logger.debug(data)
-  encoded_data = urllib.urlencode(data)
 
-  # encoded_data = requests.utils.quote(data)
-  http = urllib3.PoolManager()
-  r = http.request('POST', quote_url,
-                   headers=header,
-                   body='cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM')
-  x = r.read()
 
-  cmd = """\
-  curl 'https://www.costcotravel.com/carAgencySelection.act' -H 'Cookie: JSESSIONID=166156FD6196F2045DC7EFF1E9191FA7; BIGipServerpool-prod-app=!87b8TUntT+0/R0PCd3dqWKLWYEL+b0MyFiFUi1xPdGyNYGJPo4KvZpSB4oVGTcHfXUiEa3ztI6hOog=='  -H 'X-CSRF-Token: 5c0b850401e8c9d6512412fc9cb05a949aedd26cc3c30d38c8b7e49e1df10065090be2255b90dd8a176d1244ffe68c4b99210820fead55cd1261f102caa19a6e' --data 'cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM'
-  """
-  output = subprocess.check_output(cmd, shell=True)
 
-  y = 5
-  # result = session_handle.post(
-  #   quote_url,
-  #   headers=header,
-  #   data=encoded_data,
-  # )
+  # http = urllib3.PoolManager()
+  # r = session_handle.request('GET', quote_url,
+  #                  headers=header,
+  #                  body='cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM')
+  # x = r.read()
   #
-  # assert result.status_code == 200
-  assert 'Econ' in output
-  # logger.debug(result.content)
-  # html = BeautifulSoup(result.content)
-  # table = html.select('#carAgencyTitleDiv > table')
-  #
-  # vendors = []
-  #
-  # for row in table[0].contents:
-  #   if row.find_all('td'):
-  #     address = row.find_all('td')[0].text
-  #     vendor, agency_code = row.find_all('input')[0]['id'].split('_')
-  #     vendors.append((vendor, agency_code, address))
-  #
-  # return vendors
+  # cmd = """\
+  # curl 'https://www.costcotravel.com/carAgencySelection.act' -H 'Cookie: JSESSIONID=166156FD6196F2045DC7EFF1E9191FA7; BIGipServerpool-prod-app=!87b8TUntT+0/R0PCd3dqWKLWYEL+b0MyFiFUi1xPdGyNYGJPo4KvZpSB4oVGTcHfXUiEa3ztI6hOog=='  -H 'X-CSRF-Token: 5c0b850401e8c9d6512412fc9cb05a949aedd26cc3c30d38c8b7e49e1df10065090be2255b90dd8a176d1244ffe68c4b99210820fead55cd1261f102caa19a6e' --data 'cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM'
+  # """
+  # output = subprocess.check_output(cmd, shell=True)
+
+  result = requests.post(
+    url=quote_url,
+    headers=header,
+    data='cas=3&carAgenciesForVendors=[{"vendorId":"ET","agencyCodes":["E12347"]},{"vendorId":"BG","agencyCodes":["SFOC08"]}]&carSearchInModifyFlow=false&pickupDate=01/21/2017&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM'
+  )
+
+  cmds = ['curl', quote_url]
+  for k, v in header.items():
+    cmds.append("-H '{}: {}'".format(k, v))
+  cmds.append('--data')
+
+
+  ed = []
+  for k, v in data.items():
+    ed.append("{}={}".format(k,v ))
+
+  cmds.append("'{}'".format('&'.join(ed)))
+
+
+  print(' '.join(cmds))
+
+  assert result.status_code == 200
+  assert 'Econ' in result.content
 
 
 if __name__ == '__main__':
