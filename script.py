@@ -1,9 +1,6 @@
-import email.utils as eut
 import logging
 import re
 import subprocess
-import urllib
-from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
@@ -16,6 +13,7 @@ def chunks(a_list, n):
   """Yield successive n-sized chunks from l."""
   for i in range(0, len(a_list), n):
     yield a_list[i:i + n]
+
 
 def get_vendors(session_handle):
   vendor_url = 'https://www.costcotravel.com/carSearch.act'
@@ -99,7 +97,7 @@ def get_quotes(vendors, session_handle, previous_result):
   }
 
   all_prices = []
-  for vendor_chunk in chunks(vendors,4):
+  for vendor_chunk in chunks(vendors, 4):
     locs = {}
     for vendor, agency, address in vendor_chunk:
       if vendor in locs:
@@ -111,7 +109,6 @@ def get_quotes(vendors, session_handle, previous_result):
 
     for vendor, agencies in locs.items():
       carAgenciesForVendors.append({'vendorId': vendor, 'agencyCodes': agencies})
-      break
 
     data = {
       'cas': 3,
@@ -121,15 +118,7 @@ def get_quotes(vendors, session_handle, previous_result):
       "pickupTime": "12:00 PM",
       "dropoffDate": "01/22/2017",
       "dropoffTime": "12:00 PM",
-      # "uid": "1484554729812_780.7547816966148",
     }
-
-
-
-
-
-    # session_handle.headers.update(header)
-    # final_header = session_handle.headers
     logger.debug(header)
     logger.debug(data)
 
@@ -138,14 +127,13 @@ def get_quotes(vendors, session_handle, previous_result):
       cmds.append("-H '{}: {}'".format(k, v))
     cmds.append('--data')
 
-
     ed = []
     for k, v in data.items():
-      ed.append("{}={}".format(k,v ))
+      ed.append("{}={}".format(k, v))
 
     cmds.append("'{}'".format('&'.join(ed)))
     final_cmd = ' '.join(cmds)
-    print(final_cmd)
+    logger.debug(final_cmd)
 
     output = subprocess.check_output(final_cmd, shell=True)
     assert 'Econ' in output
@@ -154,8 +142,9 @@ def get_quotes(vendors, session_handle, previous_result):
     for div in quotes_html.find_all('div', {'class': 'carCell'}):
       all_prices.append(float(div.text.strip('$')))
 
-
   return all_prices
+
+
 if __name__ == '__main__':
   with requests.Session() as session:
     vendors, result = get_vendors(session)
