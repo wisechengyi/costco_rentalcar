@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import subprocess
+from collections import defaultdict
 from collections import namedtuple
 
 import requests
@@ -15,7 +16,7 @@ logger = logging.getLogger()
 def chunks(a_list, n):
   """Yield successive n-sized chunks from l."""
   for i in range(0, len(a_list), n):
-    yield i,i + n
+    yield i, i + n
 
 
 def open_connection(session_handle, query):
@@ -32,7 +33,9 @@ def open_connection(session_handle, query):
   assert result.status_code == 200
   return parse_vendors(result.content), result
 
+
 Vendor = namedtuple('Vendor', ['brand', 'agency_code', 'address'])
+
 
 def parse_vendors(content):
   html = BeautifulSoup(content)
@@ -43,10 +46,53 @@ def parse_vendors(content):
   for row in rows:
     if row.find_all('td'):
       address = row.find_all('td')[0].text
-      vendor, agency_code = row.find_all('input')[0]['id'].split('_')
-      vendors.append(Vendor(brand=vendor, agency_code=agency_code, address=address))
+      brand, agency_code = row.find_all('input')[0]['id'].split('_')
+      vendors.append(Vendor(brand=str(brand), agency_code=str(agency_code), address=str(address)))
   return vendors
 
+
+def prepare_cmd_with_headers(previous_result):
+  url = 'https://www.costcotravel.com/carAgencySelection.act'
+
+  can = re.split(r',|;', previous_result.headers['Set-Cookie'])
+
+  cookie = '; '.join(filter(lambda x: not any(y.lower() in x.lower() for y in ['HttpOnly', 'Path', 'Secure']), can))
+  csrf_token = previous_result.headers['csrf-token']
+  header = {
+    'Cookie': cookie,
+    'X-CSRF-Token': csrf_token,
+  }
+  logger.debug(header)
+
+  cmds = ['curl', url]
+  for k, v in header.items():
+    cmds.append("-H '{}: {}'".format(k, v))
+
+  cmds.append('--data')
+  return cmds
+
+
+def get_vendors_in_page(previous_result):
+  cmds = prepare_cmd_with_headers(previous_result)
+  quote_query_data = {
+    'cas': 5,
+    'distanceSelected': False,
+    'selectedPage': page
+  }
+
+  serialized_data = []
+  for k, v in quote_query_data.items():
+    serialized_data.append("{}={}".format(k, v))
+
+  cmds.append("'{}'".format('&'.join(serialized_data)))
+
+  final_cmd = ' '.join(cmds)
+  logger.debug(final_cmd)
+  with open(os.devnull, 'w') as devnull:
+    output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
+
+  vendors = parse_vendors(output)
+  return vendors
 
 def get_quotes(vendors, previous_result, query, page=None):
   """
@@ -60,88 +106,54 @@ def get_quotes(vendors, previous_result, query, page=None):
   :return:
   """
 
-  can = re.split(r',|;', previous_result.headers['Set-Cookie'])
-
-  cookie = '; '.join(filter(lambda x: not any(y.lower() in x.lower() for y in ['HttpOnly', 'Path', 'Secure']), can))
-  csrf_token = previous_result.headers['csrf-token']
-  quote_url = 'https://www.costcotravel.com/carAgencySelection.act'
-  header = {
-    'Cookie': cookie,
-    'X-CSRF-Token': csrf_token,
-  }
-
   all_prices = []
+  # Keep track of which range of indices in page has the best result.
   winning_chunk = (-1, -1)
 
+  # Max query size is 4 vendors.
   for start, end in chunks(vendors, 4):
     vendor_chunk = vendors[start:end]
-    locs = {}
-    for vendor, agency, address in vendor_chunk:
-      if vendor in locs:
-        locs[str(vendor)].append(str(agency))
-      else:
-        locs[str(vendor)] = [str(agency)]
+    cmds = prepare_cmd_with_headers(previous_result)
 
-    carAgenciesForVendors = []
+    # Convert
+    # avis -> a
+    # avis -> b
+    # alamo -> c
+    # alamo -> d
+    # To:
+    # 'vendorId': 'avis', 'agencyCodes': [a, b]
+    # 'vendorId': 'alamo', 'agencyCodes': [c, d]
+    locations = defaultdict(list)
+    for vendor in vendor_chunk:
+      locations[vendor.brand].append(vendor.agency_code)
 
-    for vendor, agencies in locs.items():
-      carAgenciesForVendors.append({'vendorId': vendor, 'agencyCodes': agencies})
+    carAgenciesForVendors = [{'vendorId': brand, 'agencyCodes': agencies} for brand, agencies in locations.items()]
 
     data = {
       'cas': 3,
       'carAgenciesForVendors': carAgenciesForVendors,
     }
     data.update(query)
-    logger.debug(header)
     logger.debug(data)
 
-    cmds = ['curl', quote_url]
-    for k, v in header.items():
-      cmds.append("-H '{}: {}'".format(k, v))
-    cmds.append('--data')
+    serialized_data = []
+    for k, v in data.items():
+      serialized_data.append("{}={}".format(k, v))
 
+    cmds.append("'{}'".format('&'.join(serialized_data)))
+    final_cmd = ' '.join(cmds)
+    logger.debug(final_cmd)
+    with open(os.devnull, 'w') as devnull:
+      output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
 
-    if not page:
-      serialized_data = []
-      for k, v in data.items():
-        serialized_data.append("{}={}".format(k, v))
+    assert 'Econ' in output
+    quotes_html = BeautifulSoup(output)
 
-      cmds.append("'{}'".format('&'.join(serialized_data)))
+    chunk_prices = [float(div.text.strip('$')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
+    if not all_prices or min(chunk_prices) <= min(all_prices):
+      winning_chunk = (start, end)
 
-      final_cmd = ' '.join(cmds)
-      logger.debug(final_cmd)
-      with open(os.devnull, 'w') as devnull:
-        output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
-
-      assert 'Econ' in output
-      quotes_html = BeautifulSoup(output)
-
-      chunk_prices = [float(div.text.strip('$')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
-      if not all_prices or min(chunk_prices) <= min(all_prices):
-        winning_chunk = (start, end)
-
-      all_prices.extend(chunk_prices)
-
-    else:
-      quote_query_data = {
-        'cas': 5,
-        'distanceSelected': False,
-        'selectedPage': page
-      }
-
-      serialized_data = []
-      for k, v in quote_query_data.items():
-        serialized_data.append("{}={}".format(k, v))
-
-      cmds.append("'{}'".format('&'.join(serialized_data)))
-
-      final_cmd = ' '.join(cmds)
-      logger.debug(final_cmd)
-      with open(os.devnull, 'w') as devnull:
-        output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
-
-      vendors = parse_vendors(output)
-      return vendors
+    all_prices.extend(chunk_prices)
 
   return all_prices, winning_chunk
 
@@ -184,6 +196,6 @@ if __name__ == '__main__':
     }
     vendors, result = open_connection(session, query)
     for page in range(1, 5):
-      vendors = get_quotes(vendors, result, query, page)
-      quotes, winning_chunk = get_quotes(vendors, result, query)
-      print "page {}: {} at {}".format(page, sorted(quotes)[:20], winning_chunk)
+      vendors = get_vendors_in_page(result)
+      quotes, winning_range = get_quotes(vendors, result, query)
+      print "page {}: {} at {}".format(page, sorted(quotes)[:20], winning_range)
