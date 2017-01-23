@@ -28,10 +28,9 @@ def open_connection(session_handle, query):
   }
 
   data.update(query)
-
   result = session_handle.post(vendor_url, data=data)
   assert result.status_code == 200
-  return parse_vendors(result.content), result
+  return result
 
 
 Vendor = namedtuple('Vendor', ['brand', 'agency_code', 'address'])
@@ -52,6 +51,17 @@ def parse_vendors(content):
 
 
 def prepare_cmd_with_headers(previous_result):
+  """
+  Minimal working curl command:
+  curl https://www.costcotravel.com/carAgencySelection.act
+  -H 'Cookie: JSESSIONID=6561E0532492F11DD5F2881F2BA4569A;  BIGipServerpool-prod-app=!r6rO13w4p8V3beLCd3dqWKLWYEL+b3e8+YyrGcQg9X6zCc78ikyUBYXow/+lnST9jM3jXrkQE12x7w=='
+  -H 'X-CSRF-Token: 194e2f0fd52c27e0f462b44eb18af1f6876af023355a718f4ab191efa48aebd213b3b8eefd4c0963f2dc75149feac10c87df6b564c12c485533e1f7c164155e9'
+  --data 'carAgenciesForVendors=[{'vendorId': 'BG', 'agencyCodes': ['SFOC08']}, {'vendorId': 'AV', 'agencyCodes': ['SFOC02']}]&pickupDate=01/21/2017&cas=3&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM&carSearchInModifyFlow=False'
+
+  :param vendors:
+  :return:
+  """
+
   url = 'https://www.costcotravel.com/carAgencySelection.act'
 
   can = re.split(r',|;', previous_result.headers['Set-Cookie'])
@@ -64,12 +74,12 @@ def prepare_cmd_with_headers(previous_result):
   }
   logger.debug(header)
 
-  cmds = ['curl', url]
+  cmd = ['curl', url]
   for k, v in header.items():
-    cmds.append("-H '{}: {}'".format(k, v))
+    cmd.append("-H '{}: {}'".format(k, v))
 
-  cmds.append('--data')
-  return cmds
+  cmd.append('--data')
+  return cmd
 
 
 def get_vendors_in_page(previous_result):
@@ -91,19 +101,17 @@ def get_vendors_in_page(previous_result):
   with open(os.devnull, 'w') as devnull:
     output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
 
-  vendors = parse_vendors(output)
-  return vendors
+  return parse_vendors(output)
 
-def get_quotes(vendors, previous_result, query, page=None):
+
+def get_quotes(vendors, previous_result, query):
   """
-  Minimal working curl command:
-  curl https://www.costcotravel.com/carAgencySelection.act
-  -H 'Cookie: JSESSIONID=6561E0532492F11DD5F2881F2BA4569A;  BIGipServerpool-prod-app=!r6rO13w4p8V3beLCd3dqWKLWYEL+b3e8+YyrGcQg9X6zCc78ikyUBYXow/+lnST9jM3jXrkQE12x7w=='
-  -H 'X-CSRF-Token: 194e2f0fd52c27e0f462b44eb18af1f6876af023355a718f4ab191efa48aebd213b3b8eefd4c0963f2dc75149feac10c87df6b564c12c485533e1f7c164155e9'
-  --data 'carAgenciesForVendors=[{'vendorId': 'BG', 'agencyCodes': ['SFOC08']}, {'vendorId': 'AV', 'agencyCodes': ['SFOC02']}]&pickupDate=01/21/2017&cas=3&pickupTime=12:00 PM&dropoffDate=01/22/2017&dropoffTime=12:00 PM&carSearchInModifyFlow=False'
+  Given the page # of results, find the best result in that page.
 
-  :param vendors:
-  :return:
+  :param vendors: a list of `Vendor` objects.
+  :param previous_result: A session ticket
+  :param query: answers user wants to know
+  :return: prices for all vendors and all products in this particular page.
   """
 
   all_prices = []
@@ -113,7 +121,7 @@ def get_quotes(vendors, previous_result, query, page=None):
   # Max query size is 4 vendors.
   for start, end in chunks(vendors, 4):
     vendor_chunk = vendors[start:end]
-    cmds = prepare_cmd_with_headers(previous_result)
+    cmd = prepare_cmd_with_headers(previous_result)
 
     # Convert
     # avis -> a
@@ -140,8 +148,8 @@ def get_quotes(vendors, previous_result, query, page=None):
     for k, v in data.items():
       serialized_data.append("{}={}".format(k, v))
 
-    cmds.append("'{}'".format('&'.join(serialized_data)))
-    final_cmd = ' '.join(cmds)
+    cmd.append("'{}'".format('&'.join(serialized_data)))
+    final_cmd = ' '.join(cmd)
     logger.debug(final_cmd)
     with open(os.devnull, 'w') as devnull:
       output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
@@ -168,7 +176,7 @@ if __name__ == '__main__':
     logger.setLevel(logging.INFO)
 
   with requests.Session() as session:
-    query = {
+    user_query = {
       'pickupCityLocationTypeSearch': 1,
       'pickupCountry': 'US',
       'pickupCity': 'SAN FRANCISCO-CA',
@@ -194,8 +202,8 @@ if __name__ == '__main__':
       'carSearchInModifyFlow': False,
 
     }
-    vendors, result = open_connection(session, query)
+    page_established_with_session = open_connection(session, user_query)
     for page in range(1, 5):
-      vendors = get_vendors_in_page(result)
-      quotes, winning_range = get_quotes(vendors, result, query)
+      known_vendors = get_vendors_in_page(page_established_with_session)
+      quotes, winning_range = get_quotes(known_vendors, page_established_with_session, user_query)
       print "page {}: {} at {}".format(page, sorted(quotes)[:20], winning_range)
