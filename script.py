@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import subprocess
+from collections import namedtuple
 
 import requests
 from bs4 import BeautifulSoup
@@ -14,7 +15,7 @@ logger = logging.getLogger()
 def chunks(a_list, n):
   """Yield successive n-sized chunks from l."""
   for i in range(0, len(a_list), n):
-    yield a_list[i:i + n]
+    yield i,i + n
 
 
 def open_connection(session_handle, query):
@@ -31,6 +32,7 @@ def open_connection(session_handle, query):
   assert result.status_code == 200
   return parse_vendors(result.content), result
 
+Vendor = namedtuple('Vendor', ['brand', 'agency_code', 'address'])
 
 def parse_vendors(content):
   html = BeautifulSoup(content)
@@ -42,7 +44,7 @@ def parse_vendors(content):
     if row.find_all('td'):
       address = row.find_all('td')[0].text
       vendor, agency_code = row.find_all('input')[0]['id'].split('_')
-      vendors.append((vendor, agency_code, address))
+      vendors.append(Vendor(brand=vendor, agency_code=agency_code, address=address))
   return vendors
 
 
@@ -69,7 +71,10 @@ def get_quotes(vendors, previous_result, query, page=None):
   }
 
   all_prices = []
-  for vendor_chunk in chunks(vendors, 4):
+  winning_chunk = (-1, -1)
+
+  for start, end in chunks(vendors, 4):
+    vendor_chunk = vendors[start:end]
     locs = {}
     for vendor, agency, address in vendor_chunk:
       if vendor in locs:
@@ -95,6 +100,7 @@ def get_quotes(vendors, previous_result, query, page=None):
       cmds.append("-H '{}: {}'".format(k, v))
     cmds.append('--data')
 
+
     if not page:
       serialized_data = []
       for k, v in data.items():
@@ -110,8 +116,12 @@ def get_quotes(vendors, previous_result, query, page=None):
       assert 'Econ' in output
       quotes_html = BeautifulSoup(output)
 
-      for div in quotes_html.find_all('div', {'class': 'carCell'}):
-        all_prices.append(float(div.text.strip('$')))
+      chunk_prices = [float(div.text.strip('$')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
+      if not all_prices or min(chunk_prices) <= min(all_prices):
+        winning_chunk = (start, end)
+
+      all_prices.extend(chunk_prices)
+
     else:
       quote_query_data = {
         'cas': 5,
@@ -133,7 +143,7 @@ def get_quotes(vendors, previous_result, query, page=None):
       vendors = parse_vendors(output)
       return vendors
 
-  return all_prices
+  return all_prices, winning_chunk
 
 
 if __name__ == '__main__':
@@ -164,9 +174,9 @@ if __name__ == '__main__':
 
       'driverAge': 25,
 
-      "pickupDate": "01/21/2017",
+      "pickupDate": "01/28/2017",
       "pickupTime": "09:00 AM",
-      "dropoffDate": "01/22/2017",
+      "dropoffDate": "01/30/2017",
       "dropoffTime": "09:00 AM",
 
       'carSearchInModifyFlow': False,
@@ -175,5 +185,5 @@ if __name__ == '__main__':
     vendors, result = open_connection(session, query)
     for page in range(1, 5):
       vendors = get_quotes(vendors, result, query, page)
-      quotes = get_quotes(vendors, result, query)
-      print "page {}: {}".format(page, sorted(quotes))
+      quotes, winning_chunk = get_quotes(vendors, result, query)
+      print "page {}: {} at {}".format(page, sorted(quotes)[:20], winning_chunk)
