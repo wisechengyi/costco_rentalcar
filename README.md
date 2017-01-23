@@ -20,4 +20,4 @@ Then you know which page has the best deal, and go to the regular web page to co
 TODO: Tell user which exact location has the best deal.
 
 ## Parameters
-Currently parameters have to manually tailored to your needs with [this variable](https://github.com/wisechengyi/costco_rentalcar/blob/master/script.py#L149-L174).
+Currently parameters have to manually tailored to your needs with [this variable](https://github.com/wisechengyi/costco_rentalcar/blob/master/script.py#L179-L204).
