@@ -158,8 +158,9 @@ def get_quotes(vendors, previous_result, query):
     quotes_html = BeautifulSoup(output)
 
     chunk_prices = [float(div.text.strip('$')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
-    if not all_prices or min(chunk_prices) <= min(all_prices):
-      winning_chunk = (start, end)
+    if chunk_prices:
+      if not all_prices or min(chunk_prices) <= min(all_prices):
+        winning_chunk = (start, end)
 
     all_prices.extend(chunk_prices)
 
@@ -203,7 +204,7 @@ if __name__ == '__main__':
 
     }
     page_established_with_session = open_connection(session, user_query)
-    for page in range(1, 5):
+    for page in range(1, 10):
       known_vendors = get_vendors_in_page(page_established_with_session)
       quotes, winning_range = get_quotes(known_vendors, page_established_with_session, user_query)
       print "page {}: {} at {}".format(page, sorted(quotes)[:20], winning_range)
