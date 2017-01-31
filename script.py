@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import argparse
 import logging
 import os
@@ -195,9 +196,9 @@ if __name__ == '__main__':
 
       'driverAge': 25,
 
-      "pickupDate": "01/28/2017",
+      "pickupDate": "02/04/2017",
       "pickupTime": "09:00 AM",
-      "dropoffDate": "01/30/2017",
+      "dropoffDate": "02/06/2017",
       "dropoffTime": "09:00 AM",
 
       'carSearchInModifyFlow': False,
