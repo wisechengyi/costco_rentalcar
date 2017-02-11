@@ -158,7 +158,7 @@ def get_quotes(vendors, previous_result, query):
     assert 'Econ' in output
     quotes_html = BeautifulSoup(output)
 
-    chunk_prices = [float(div.text.strip('$')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
+    chunk_prices = [float(div.text.strip('$').replace(',','')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
     if chunk_prices:
       if not all_prices or min(chunk_prices) <= min(all_prices):
         winning_chunk = (start, end)
@@ -196,9 +196,9 @@ if __name__ == '__main__':
 
       'driverAge': 25,
 
-      "pickupDate": "02/04/2017",
+      "pickupDate": "02/11/2017",
       "pickupTime": "09:00 AM",
-      "dropoffDate": "02/06/2017",
+      "dropoffDate": "02/13/2017",
       "dropoffTime": "09:00 AM",
 
       'carSearchInModifyFlow': False,
