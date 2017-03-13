@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import subprocess
+import html2text
 from collections import defaultdict
 from collections import namedtuple
 
@@ -71,7 +72,7 @@ def prepare_cmd_with_headers(previous_result):
   csrf_token = previous_result.headers['csrf-token']
   header = {
     'Cookie': cookie,
-    'X-CSRF-Token': csrf_token,
+    'X-Csrf-Token': csrf_token,
   }
   logger.debug(header)
 
@@ -83,12 +84,12 @@ def prepare_cmd_with_headers(previous_result):
   return cmd
 
 
-def get_vendors_in_page(previous_result):
+def get_vendors_in_page(previous_result, page_to_query):
   cmds = prepare_cmd_with_headers(previous_result)
   quote_query_data = {
     'cas': 5,
     'distanceSelected': False,
-    'selectedPage': page
+    'selectedPage': page_to_query
   }
 
   serialized_data = []
@@ -155,7 +156,7 @@ def get_quotes(vendors, previous_result, query):
     with open(os.devnull, 'w') as devnull:
       output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
 
-    assert 'Econ' in output
+    r = html2text.html2text(output)
     quotes_html = BeautifulSoup(output)
 
     chunk_prices = [float(div.text.strip('$').replace(',','')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
@@ -196,16 +197,16 @@ if __name__ == '__main__':
 
       'driverAge': 25,
 
-      "pickupDate": "02/11/2017",
-      "pickupTime": "09:00 AM",
-      "dropoffDate": "02/13/2017",
-      "dropoffTime": "09:00 AM",
+      "pickupDate": "03/17/2017",
+      "pickupTime": "12:00 PM",
+      "dropoffDate": "03/19/2017",
+      "dropoffTime": "12:00 PM",
 
       'carSearchInModifyFlow': False,
 
     }
     page_established_with_session = open_connection(session, user_query)
     for page in range(1, 10):
-      known_vendors = get_vendors_in_page(page_established_with_session)
+      known_vendors = get_vendors_in_page(page_established_with_session, page)
       quotes, winning_range = get_quotes(known_vendors, page_established_with_session, user_query)
       print "page {}: {} at {}".format(page, sorted(quotes)[:20], winning_range)
