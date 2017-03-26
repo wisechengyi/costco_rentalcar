@@ -197,10 +197,10 @@ if __name__ == '__main__':
 
       'driverAge': 25,
 
-      "pickupDate": "03/17/2017",
-      "pickupTime": "12:00 PM",
-      "dropoffDate": "03/19/2017",
-      "dropoffTime": "12:00 PM",
+      "pickupDate": "04/01/2017",
+      "pickupTime": "09:00 AM",
+      "dropoffDate": "04/03/2017",
+      "dropoffTime": "09:00 AM",
 
       'carSearchInModifyFlow': False,
 
