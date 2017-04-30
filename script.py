@@ -38,7 +38,7 @@ Vendor = namedtuple('Vendor', ['brand', 'agency_code', 'address'])
 
 
 def parse_vendors(content):
-  html = BeautifulSoup(content)
+  html = BeautifulSoup(content, "html.parser")
   table = html.select('#carAgencyTitleDiv > table')
   rows = table[0].contents
 
@@ -156,8 +156,7 @@ def get_quotes(vendors, previous_result, query):
     with open(os.devnull, 'w') as devnull:
       output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
 
-    # r = html2text.html2text(output)
-    quotes_html = BeautifulSoup(output)
+    quotes_html = BeautifulSoup(output, "html.parser")
 
     chunk_prices = [float(div.text.strip('$').replace(',', '')) for div in
                     quotes_html.find_all('div', {'class': 'carCell'})]
