@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 import argparse
 import logging
+import subprocess
+
 import os
 import re
-import subprocess
-import html2text
-from collections import defaultdict
-from collections import namedtuple
-
 import requests
 from bs4 import BeautifulSoup
+from collections import defaultdict
+from collections import namedtuple
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
@@ -68,7 +67,7 @@ def prepare_cmd_with_headers(previous_result):
 
   can = re.split(r',|;', previous_result.headers['Set-Cookie'])
 
-  cookie = '; '.join(filter(lambda x: not any(y.lower() in x.lower() for y in ['HttpOnly', 'Path', 'Secure']), can))
+  cookie = '; '.join([x for x in can if not any(y.lower() in x.lower() for y in ['HttpOnly', 'Path', 'Secure'])])
   csrf_token = previous_result.headers['csrf-token']
   header = {
     'Cookie': cookie,
@@ -77,7 +76,7 @@ def prepare_cmd_with_headers(previous_result):
   logger.debug(header)
 
   cmd = ['curl', url]
-  for k, v in header.items():
+  for k, v in list(header.items()):
     cmd.append("-H '{}: {}'".format(k, v))
 
   cmd.append('--data')
@@ -93,7 +92,7 @@ def get_vendors_in_page(previous_result, page_to_query):
   }
 
   serialized_data = []
-  for k, v in quote_query_data.items():
+  for k, v in list(quote_query_data.items()):
     serialized_data.append("{}={}".format(k, v))
 
   cmds.append("'{}'".format('&'.join(serialized_data)))
@@ -137,7 +136,8 @@ def get_quotes(vendors, previous_result, query):
     for vendor in vendor_chunk:
       locations[vendor.brand].append(vendor.agency_code)
 
-    carAgenciesForVendors = [{'vendorId': brand, 'agencyCodes': agencies} for brand, agencies in locations.items()]
+    carAgenciesForVendors = [{'vendorId': brand, 'agencyCodes': agencies} for brand, agencies in
+                             list(locations.items())]
 
     data = {
       'cas': 3,
@@ -147,7 +147,7 @@ def get_quotes(vendors, previous_result, query):
     logger.debug(data)
 
     serialized_data = []
-    for k, v in data.items():
+    for k, v in list(data.items()):
       serialized_data.append("{}={}".format(k, v))
 
     cmd.append("'{}'".format('&'.join(serialized_data)))
@@ -156,10 +156,11 @@ def get_quotes(vendors, previous_result, query):
     with open(os.devnull, 'w') as devnull:
       output = subprocess.check_output(final_cmd, shell=True, stderr=devnull, stdin=devnull)
 
-    r = html2text.html2text(output)
+    # r = html2text.html2text(output)
     quotes_html = BeautifulSoup(output)
 
-    chunk_prices = [float(div.text.strip('$').replace(',','')) for div in quotes_html.find_all('div', {'class': 'carCell'})]
+    chunk_prices = [float(div.text.strip('$').replace(',', '')) for div in
+                    quotes_html.find_all('div', {'class': 'carCell'})]
     if chunk_prices:
       if not all_prices or min(chunk_prices) <= min(all_prices):
         winning_chunk = (start, end)
@@ -197,10 +198,10 @@ if __name__ == '__main__':
 
       'driverAge': 25,
 
-      "pickupDate": "04/01/2017",
-      "pickupTime": "09:00 AM",
-      "dropoffDate": "04/03/2017",
-      "dropoffTime": "09:00 AM",
+      "pickupDate": "05/26/2017",
+      "pickupTime": "05:00 PM",
+      "dropoffDate": "05/29/2017",
+      "dropoffTime": "05:00 PM",
 
       'carSearchInModifyFlow': False,
 
@@ -209,4 +210,4 @@ if __name__ == '__main__':
     for page in range(1, 10):
       known_vendors = get_vendors_in_page(page_established_with_session, page)
       quotes, winning_range = get_quotes(known_vendors, page_established_with_session, user_query)
-      print "page {}: {} at {}".format(page, sorted(quotes)[:20], winning_range)
+      print(("page {}: {} at {}".format(page, sorted(quotes)[:20], winning_range)))
